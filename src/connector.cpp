@@ -1,0 +1,269 @@
+#include "connector.h"
+
+/*Begin Definitions for 'connector'*/
+Connector::Connector() {
+    command[0] = '\0';
+    left = NULL;
+    right = NULL;
+}
+
+Connector::Connector(char* argv[]) {
+    for (int i = 0; argv[i] != '\0'; ++i) {
+        command[i] = argv[i];
+        command[i+1] = '\0';
+    }
+    left = NULL;
+    right = NULL;
+}
+
+Connector::~Connector() {}
+
+bool Connector::execute(char* args[]) {
+
+    if (strcmp(args[0], "exit") == 0) exit(0);
+    else if (strcmp(args[0], "test") == 0) {
+        // return test(args);
+        bool success = test(args);
+        return success;
+    }
+
+    int status;
+    pid_t c_pid, pid; // child_processID, processID
+    c_pid = fork(); 
+    // Forks our process and stores its ID into a variable "child id"
+
+    // First fork a process.
+    if (c_pid < 0) { 
+        // If the fork doesn't take place at all => It fails
+        perror("fork failed");
+        exit(EXIT_FAILURE);
+    }
+    else if (c_pid == 0) { 
+        // If the fork succeeds, and this is the child process
+        execvp(args[0], args);
+        perror("execvp failed");
+        exit(EXIT_FAILURE);
+    }
+    else if (c_pid > 0) { 
+        // If the fork succeeds, and this is the parent process
+        if ( (pid = wait(&status)) < 0) {
+            perror("wait failed");
+            exit(EXIT_FAILURE);
+        }
+    }
+    return (status == 0); // I'M CHEATING
+}
+
+bool Connector::run() {
+    return execute(command);
+}
+
+void Connector::setLeft(Connector* l) {
+    left = l;
+}
+
+void Connector::setRight(Connector* r) {
+    right = r;
+}
+
+Connector* Connector::getLeft() {
+    return left;
+}
+
+Connector* Connector::getRight() {
+    return right;
+}
+
+bool Connector::hasLeft() {
+    return (left != NULL);
+}
+
+bool Connector::hasRight() {
+    return (right != NULL);
+}
+
+void Connector::destroyBranch(Connector* node) {
+    // You should be passing in the right branch head
+    // Preorder deletion
+    if (node->left != NULL) destroyBranch(node->left);
+    if (node->right != NULL) destroyBranch(node->right);
+    delete node;
+    return;
+}
+
+char** Connector::getCmd() {
+    return command;
+}
+
+void Connector::identify() {
+    cout << "I'm an argument!" << endl;
+    cout << "[DEBUG] I have the following command: "; printArgs(command); cout << '!' << endl;
+}
+/*End definitions for 'Connector'*/
+
+/* Begin definitions for 'Ampersand' */
+Ampersand::Ampersand() {
+    left = NULL;
+    right = NULL;
+}
+
+Ampersand::Ampersand(Connector* l, Connector* r) {
+    left = l;
+    right = r;
+}
+
+Ampersand::~Ampersand() {
+    left = NULL; // NOT VALUES, JUST POINTERS
+    right = NULL;
+}
+
+bool Ampersand::run() {
+    if (!left->run()) return false; // And don't run the next command
+    return right->run();
+}
+
+void Ampersand::identify() {
+    cout << "I'm an Ampersand connector!" << endl;
+}
+/* End definitions for 'Ampersand' */
+
+/* Begin definitions for 'DoubleBars' */
+DoubleBars::DoubleBars() {
+    left = NULL;
+    right = NULL;
+}
+DoubleBars::DoubleBars(Connector* l, Connector* r) {
+    left = l;
+    right = r;
+}
+
+DoubleBars::~DoubleBars() {
+    left = NULL;
+    right = NULL;
+}
+
+bool DoubleBars::run() {
+    if (!left->run()) {
+        return right->run();
+    }
+    return true; 
+    // If cmd1 executed correctly:
+    // The if statement should not occur and just return true.
+}
+
+void DoubleBars::identify() {
+    cout << "I'm a DoubleBar connector!" << endl;
+}
+/* End definitions for 'Doublebars' */
+
+/* Begin definitons for 'Semicolon' */
+Semicolon::Semicolon() {
+    left = NULL;
+    right = NULL;
+}
+
+Semicolon::Semicolon(Connector* l, Connector* r) {
+    left = l;
+    right = r;
+}
+
+Semicolon::~Semicolon() {
+    left = NULL;
+    right = NULL;
+}
+
+bool Semicolon::run() {
+    bool success = false;
+    if (hasLeft()) success = left->run();
+    if (hasRight()) return right->run(); // Should always run the next command.
+    return success;
+}
+
+void Semicolon::identify() {
+    cout << "I'm a Semicolon connector!" << endl;
+}
+/* End definitions for 'Semicolon' */
+
+/* Begin definitions for 'Hash' */
+Hash::Hash() {
+    left = NULL;
+    right = NULL;
+}
+
+Hash::Hash(Connector* l, Connector* r) {
+    left = l;
+    right = r;
+}
+
+Hash::~Hash() {
+    left = NULL;
+    right = NULL;
+}
+
+bool Hash::run() {
+    left->run(); // Runs this...
+    // FIXME: Then it should kill its parents and right children...
+    // Sounds morbid.
+    return false; // Placeholder
+}
+
+void Hash::identify() {
+    cout << "I'm a Hash operator! ...:)" << endl;
+}
+/* End definitions for 'Hash' */
+
+/* Begin definitions for 'ConnectorFactory' */
+Connector* ConnectorFactory::createBranch
+(list<char**>& args, list<char*>& cons) {
+    
+    // This is almost the same algorithm as BuildTree()
+    // If has more right branches, build via recursion.
+
+    Connector* subHead = NULL;
+    Connector* left = NULL;
+    Connector* right = NULL;
+    
+    ConnectorFactory factory;
+
+    if (hasStartParenthesis(args.front()[0])) {
+        hasEndParenthesis(args.front());
+        left = factory.createBranch(args, cons);
+        // args.pop_front();
+        for (int i = 0; !args.empty() && 
+            !hasEndParenthesis(args.front()); ++i) { 
+            // Input should not allow infinite loop here
+            subHead = factory.createConnector(checkConnectors(cons.front()));
+            cons.pop_front();
+            right = factory.createBranch(args, cons); 
+            subHead->setLeft(left);
+            subHead->setRight(right);
+            left = subHead;
+        }
+        if (!args.empty()) {
+            right = factory.createBranch(args, cons);
+            subHead = factory.createConnector(checkConnectors(cons.front()));
+            cons.pop_front();
+            subHead->setLeft(left);
+            subHead->setRight(right);
+            left = subHead;
+        }
+        else {
+            subHead = left;
+        }
+    }
+    else {
+        subHead = new Connector(args.front());
+        args.pop_front();
+    }
+
+    return subHead; 
+}
+
+Connector* ConnectorFactory::createConnector(int flag) {
+    if (flag == 0) return new Semicolon;
+    else if (flag == 1) return new Hash;
+    else if (flag == 2) return new DoubleBars;
+    else if (flag == 3) return new Ampersand;
+    else return NULL;
+}
+/* End definitions for 'ConnectorFactory' */
